@@ -32,7 +32,7 @@ sys.path.insert(1,'C:\\Users\\ejahi\\carla\\PythonAPI\\carla')
 
 from agents.navigation.global_route_planner import GlobalRoutePlanner
 
-##################### Provided by CARLA Documenation ######################
+##################### Provided by CARLA Documenation ###########################
 def visualize_spawn_points_on_map(world, spawnPoints):
     for i, spawn_point in enumerate(spawnPoints):
         # Draw in the spectator window the spawn point index
@@ -41,7 +41,32 @@ def visualize_spawn_points_on_map(world, spawnPoints):
         # (i.e. which way the vehicle will be facing when spawned)
         world.debug.draw_arrow(spawn_point.location, spawn_point.location + spawn_point.get_forward_vector(), life_time=100)
 
-################################# Custom ####################################
+################################# Custom #######################################
+
+class PIDControl:
+    def __init__(self, Kp, Ki, Kd):
+        self.Kp = Kp
+        self.Ki = Ki
+        self.Kd = Kd
+        self.accumulatedError = 0
+        self.previousError = 0
+
+    def control(self, vref, v, dt):
+        error = vref - v
+        self.accumulatedError += error * dt
+    
+        porportionalTerm = self.Kp * error
+        integralTerm = self.Ki * self.accumulatedError
+        derivativeTerm = self.Kp * ( (error - self.previousError) / dt )
+
+        self.previousError = error 
+
+        return porportionalTerm + integralTerm + derivativeTerm
+
+class stanleyController:
+    def __init(self):
+        pass
+
 def intialize_specator(world,vehicle):
     try:
         spectator = world.get_spectator()

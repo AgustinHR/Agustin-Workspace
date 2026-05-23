@@ -20,12 +20,16 @@
 #       - get_specator(): acts as the camera and controls the view of the simulation window
 #       - get_blueprint_library(): returns a list of all aviable objects that can be used in simulation
 #       - get_spawn_points(): returns list of recommended spawn points (x,y,z,roll,pitch,yaw) for the vehicle
+#       - length() - returns magnitude of velocity vector (m/s)
 #
 
 ################################# Packages ######################################
 import sys
 import carla 
 import time
+import math
+import numpy as np
+import matplotlib.pyplot as plt 
 
 # Replace with where you have PythonAPI/carla located in your computer
 sys.path.insert(1,'C:\\Users\\ejahi\\carla\\PythonAPI\\carla')
@@ -51,17 +55,24 @@ class PIDControl:
         self.accumulatedError = 0
         self.previousError = 0
 
-    def control(self, vref, v, dt):
+    def controller(self, vref, v, dt):
         error = vref - v
         self.accumulatedError += error * dt
     
         porportionalTerm = self.Kp * error
         integralTerm = self.Ki * self.accumulatedError
-        derivativeTerm = self.Kp * ( (error - self.previousError) / dt )
+        derivativeTerm = self.Kd * ( (error - self.previousError) / dt )
 
         self.previousError = error 
 
-        return porportionalTerm + integralTerm + derivativeTerm
+        u =  porportionalTerm + integralTerm + derivativeTerm
+
+        if u >= 1.0:
+            return min(u,1.0)
+        elif u < 0.0:
+            return 0.0
+        
+        return u
 
 class stanleyController:
     def __init(self):
@@ -93,10 +104,19 @@ def draw_way_points(world,waypoints):
                                 persistent_lines=True)
         
 ################################## Main ########################################
-simulationTime = 20 
+simulationTime = 25.0
 startPoint = None
 endPoint = None
 sampleResolutoin = 2
+
+# PID gains and vref
+Kp = 0.8
+Ki = 0.9
+Kd = 0.7
+
+vref= 15.0
+
+# Stanely gain
 
 def main():
 
@@ -123,7 +143,7 @@ def main():
         if not spawn_points:
             print("Error: No spawn points found")
             return 
-        startPoint = spawn_points[50]
+        startPoint = spawn_points[38] #50
         endPoint = spawn_points[364]
 
         # # Choosing Vehicle
@@ -134,6 +154,7 @@ def main():
         # # Spawning vehicle
         print("Attempting to spawn vehicle ...")
         vehicle = world.try_spawn_actor(chosen_vehicle_model,startPoint)
+        print(type(vehicle))
         print(f"Vehicle {chosen_vehicle_model.id} has spawn in {map.name}")
 
         # Setting up camera so it is behind vehicle
@@ -144,19 +165,54 @@ def main():
         waypoints = create_way_points(world,routePlanner,startPoint,endPoint)
         draw_way_points(world, waypoints)
 
+        # Controlling vehicle 
+        vehicleControl = carla.VehicleControl()
+
+        # PID 
+        pid = PIDControl(Kp,Ki,Kd)
+
         # # Main Loop
-        # initialTime = time.time()
-        # while (time.time() - initialTime) < simulationTime:
-        #     # Move vehicle 
-        #     control = carla.VehicleControl(throttle=0.8, steer=0.0, brake=0.0) 
-        #     vehicle.apply_control(control)
+        initialTime = time.time()
+        dt = 0.001
 
-        #     # Updates camera to stay near vehicle 
-        #     intialize_specator(world,vehicle)
+        velocityAxis = []
+        timeAxis = []
 
-        # # Stop vehicle 
-        # control = carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.0) 
-        # vehicle.apply_control(control)   
+        while (time.time() - initialTime) < simulationTime:
+            
+            # Will be use for time-plot
+            t = time.time() - initialTime
+
+            # Current velocity 
+            currentVelocity = vehicle.get_velocity().length()
+            u = pid.controller(vref,currentVelocity,dt)
+            vehicleControl.throttle = u
+            vehicle.apply_control(vehicleControl)
+
+
+            # Updates camera to stay near vehicle 
+            intialize_specator(world,vehicle)
+
+            # Update time-plot
+            velocityAxis.append(currentVelocity)
+            timeAxis.append(t)
+
+        # Stop vehicle 
+        vehicleControl = carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.0) 
+        vehicle.apply_control(vehicleControl)  
+
+        # Appending to plot 
+        velocityAxis = np.array(velocityAxis)
+        timeAxis = np.array(timeAxis)
+
+        # Plot Settings
+        plt.plot(timeAxis,velocityAxis)
+        plt.xlabel("Time (s)")
+        plt.ylabel("Vehicle Speed (m/s)")
+        plt.title("PID Controller Results")
+        plt.axhline(y=vref,color='gray',linestyle='-')
+        plt.grid()
+        plt.show()
         
     except:
         print("Did not connect to Carla server")

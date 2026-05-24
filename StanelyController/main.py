@@ -30,6 +30,7 @@ import time
 import math
 import numpy as np
 import matplotlib.pyplot as plt 
+from matplotlib.ticker import MultipleLocator
 
 # Replace with where you have PythonAPI/carla located in your computer
 sys.path.insert(1,'C:\\Users\\ejahi\\carla\\PythonAPI\\carla')
@@ -52,10 +53,14 @@ class PIDControl:
         self.Kp = Kp
         self.Ki = Ki
         self.Kd = Kd
-        self.accumulatedError = 0
-        self.previousError = 0
+        self.accumulatedError = 0.0
+        self.previousError = 0.0
+        self.previousTime = 0.0
 
-    def controller(self, vref, v, dt):
+    def controller(self, vref, v):
+        currentTime = time.perf_counter()
+        dt = currentTime - self.previousTime
+        
         error = vref - v
         self.accumulatedError += error * dt
     
@@ -66,6 +71,8 @@ class PIDControl:
         self.previousError = error 
 
         u =  porportionalTerm + integralTerm + derivativeTerm
+
+        self.previousTime = currentTime
 
         if u >= 1.0:
             return min(u,1.0)
@@ -104,15 +111,15 @@ def draw_way_points(world,waypoints):
                                 persistent_lines=True)
         
 ################################## Main ########################################
-simulationTime = 25.0
+simulationTime = 8.0
 startPoint = None
 endPoint = None
 sampleResolutoin = 2
 
 # PID gains and vref
-Kp = 0.8
-Ki = 0.9
-Kd = 0.7
+Kp = 1.2
+Ki = 0.03
+Kd = 0.01
 
 vref= 15.0
 
@@ -170,14 +177,13 @@ def main():
 
         # PID 
         pid = PIDControl(Kp,Ki,Kd)
-
+        pid.previousTime = time.perf_counter()
         # # Main Loop
         initialTime = time.time()
-        dt = 0.001
 
         velocityAxis = []
+        errorAxis = []
         timeAxis = []
-
         while (time.time() - initialTime) < simulationTime:
             
             # Will be use for time-plot
@@ -185,7 +191,7 @@ def main():
 
             # Current velocity 
             currentVelocity = vehicle.get_velocity().length()
-            u = pid.controller(vref,currentVelocity,dt)
+            u = pid.controller(vref,currentVelocity)
             vehicleControl.throttle = u
             vehicle.apply_control(vehicleControl)
 
@@ -195,6 +201,7 @@ def main():
 
             # Update time-plot
             velocityAxis.append(currentVelocity)
+            errorAxis.append(pid.previousError)
             timeAxis.append(t)
 
         # Stop vehicle 
@@ -203,17 +210,30 @@ def main():
 
         # Appending to plot 
         velocityAxis = np.array(velocityAxis)
+        errorAxis = np.array(errorAxis)
         timeAxis = np.array(timeAxis)
 
         # Plot Settings
-        plt.plot(timeAxis,velocityAxis)
+
+        plt.subplot(2,1,1)
         plt.xlabel("Time (s)")
         plt.ylabel("Vehicle Speed (m/s)")
         plt.title("PID Controller Results")
         plt.axhline(y=vref,color='gray',linestyle='-')
-        plt.grid()
-        plt.show()
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
+        plt.plot(timeAxis, velocityAxis, linewidth="2")
         
+        plt.subplot(2,1,2)
+        plt.xlabel("Time (s)")
+        plt.ylabel("Error")
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
+        plt.plot(timeAxis,errorAxis, linewidth="2")
+
+        plt.show()
+
+
     except:
         print("Did not connect to Carla server")
 

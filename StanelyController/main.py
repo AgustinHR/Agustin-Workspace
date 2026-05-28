@@ -94,6 +94,7 @@ class Stanley:
 
         ############ REMOVE AFTER ##################
         print(" ")
+        print("*********************************************************************************")
         print("-------------------------------------------")
         print("Closest Path Point Status")
         print("-------------------------------------------")
@@ -104,7 +105,6 @@ class Stanley:
         print(f"Unit Vector of WP2-WP1: {v_uv}")
         print(f"Path Heading: { np.arctan2(v_uv[1], v_uv[0])}")
         print(f"Closest Point: {closestPoint}")
-        print(f"Cross Track Error: {crossTrackError}, Magnitude {np.linalg.norm(crossTrackError)}")
         print("-------------------------------------------")
         #############################################
 
@@ -118,6 +118,10 @@ class Stanley:
 
         crossTrackTerm = np.arctan2(k*crossTrackErrorMagnitude*crossTrackErrorSign,speed)
         steer = headingTerm + crossTrackTerm
+
+        steer = headingTerm + crossTrackTerm
+
+
         steer = np.clip(steer,-1.0,1.0)
 
         ############ REMOVE AFTER ##################
@@ -134,6 +138,7 @@ class Stanley:
         print(f"Cross Track Term: {crossTrackTerm}")
         print(f"Steer Command: {steer}")
         print("-------------------------------------------")
+        print("*********************************************************************************")
         #############################################
 
         return steer
@@ -178,20 +183,20 @@ def draw_way_points(world,waypoints):
         
 ################################## Main ########################################
 
-simulationTime = 3.0
+simulationTime = 30.0
 startPoint = None
 endPoint = None
 sampleResolutoin = 2
 
 # PID paremters 
-vref= 12.0
+vref= 4.0
 Kp = 1.2
 Ki = 0.03
 Kd = 0.01
 ff = 0.0
 
 # Stanely gain
-k = 5.0
+k = 0.1
 
 def main():
 

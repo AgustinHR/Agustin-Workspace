@@ -110,18 +110,26 @@ class Stanley:
 
         return crossTrackError, np.arctan2(v_uv[1], v_uv[0])
     
-    def controller(self,crossTrackError, pathHeading, vehicleHeading, speed, k):
+    def controller(self,crossTrackError, pathHeading, vehicleHeading, speed, k,k1):
         headingTerm = pathHeading - vehicleHeading
-        crossTrackAngle = np.arctan2(crossTrackError[1], crossTrackError[0])
-        crossTrackErrorSign = math.copysign(1,crossTrackAngle)
+
+        if headingTerm > np.pi:
+            headingTerm -= 2 * np.pi
+        if headingTerm < -np.pi:
+            headingTerm += 2 * np.pi
+
         crossTrackErrorMagnitude = np.linalg.norm(crossTrackError)
 
-        crossTrackTerm = np.arctan2(k*crossTrackErrorMagnitude*crossTrackErrorSign,speed)
-        steer = headingTerm + crossTrackTerm
+        if headingTerm > 0:
+            crossTrackErrorMagnitude = abs(crossTrackErrorMagnitude)
+        else:
+            crossTrackErrorMagnitude = -abs(crossTrackErrorMagnitude)
+
+        crossTrackTerm = np.arctan2(k*crossTrackErrorMagnitude,k1 * speed)
+
 
         steer = headingTerm + crossTrackTerm
-
-
+        steer = headingTerm + crossTrackTerm
         steer = np.clip(steer,-1.0,1.0)
 
         ############ REMOVE AFTER ##################
@@ -132,8 +140,6 @@ class Stanley:
         print(f"Path Heading: {pathHeading} Vehicle Heading: {vehicleHeading}")
         print(f"Heading Term: {headingTerm}")
         print(f"Cross Track Error: {crossTrackError}")
-        print(f"Cross Track Error Angle: {crossTrackAngle}")
-        print(f"Cross Track Error Sign: {crossTrackErrorSign}")
         print(f"Cross Track Error Magnitude: {crossTrackErrorMagnitude}")
         print(f"Cross Track Term: {crossTrackTerm}")
         print(f"Steer Command: {steer}")
@@ -166,6 +172,13 @@ def intialize_specator(world,vehicle):
     except:
         print("Error: Something went wrong when trying to initialize spectator")
 
+def cameraPosition(world, vehicle):
+    spectator = world.get_spectator()
+    vehicleCurrentLocaton = vehicle.get_transform()
+    rectangularCord = vehicleCurrentLocaton.location + carla.Location(z=1.8)
+    angularCord = vehicleCurrentLocaton.rotation
+    spectator.set_transform(carla.Transform(rectangularCord, angularCord))
+
 def create_way_points(world,planner,start,end):
     path = planner.trace_route(carla.Location(start.location), carla.Location(end.location))
     waypoints = []
@@ -183,7 +196,7 @@ def draw_way_points(world,waypoints):
         
 ################################## Main ########################################
 
-simulationTime = 30.0
+simulationTime = 10.0
 startPoint = None
 endPoint = None
 sampleResolutoin = 2
@@ -196,7 +209,8 @@ Kd = 0.01
 ff = 0.0
 
 # Stanely gain
-k = 0.1
+k = 0.03
+k1 = 0.8
 
 def main():
 
@@ -208,6 +222,9 @@ def main():
     xy_waypoints = []
     velocityAxis = []
     errorAxis = []
+
+    crossTrackErrorData = []
+
     timeAxis = []
 
     try:
@@ -286,15 +303,16 @@ def main():
             vehicleHeading = math.radians(vehicle_transform.rotation.yaw)
             currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
             crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)
-            steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k)
+            steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
             vehicleControl.steer = steering
 
             # Updates camera to stay near vehicle 
-            intialize_specator(world,vehicle)
+            cameraPosition(world,vehicle)
 
             # Update time-plot
             velocityAxis.append(currentVelocity)
             errorAxis.append(pid.previousError)
+            crossTrackErrorData.append(np.linalg.norm(crossTrackError))
             timeAxis.append(t)
 
         # Stop vehicle 
@@ -304,25 +322,32 @@ def main():
         # Appending to plot 
         velocityAxis = np.array(velocityAxis)
         errorAxis = np.array(errorAxis)
+        crossTrackErrorData = np.array(crossTrackErrorData)
         timeAxis = np.array(timeAxis)
 
         # Plot Settings
-        # plt.subplot(2,1,1)
-        # plt.xlabel("Time (s)")
-        # plt.ylabel("Vehicle Speed (m/s)")
-        # plt.title("PID Controller Results")
-        # plt.axhline(y=vref,color='gray',linestyle='-')
-        # plt.minorticks_on()
-        # plt.grid(True, which="both", linewidth = 0.2)
-        # plt.plot(timeAxis, velocityAxis, linewidth="2")
+        plt.subplot(2,2,1)
+        plt.xlabel("Time (s)")
+        plt.ylabel("Vehicle Speed (m/s)")
+        plt.title("PID Controller Results")
+        plt.axhline(y=vref,color='gray',linestyle='-')
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
+        plt.plot(timeAxis, velocityAxis, linewidth="2")
         
-        # plt.subplot(2,1,2)
-        # plt.xlabel("Time (s)")
-        # plt.ylabel("Error")
-        # plt.minorticks_on()
-        # plt.grid(True, which="both", linewidth = 0.2)
-        # plt.plot(timeAxis,errorAxis, linewidth="2")
+        plt.subplot(2,2,2)
+        plt.xlabel("Time (s)")
+        plt.ylabel("Error")
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
+        plt.plot(timeAxis,errorAxis, linewidth="2")
 
+        plt.subplot(2,2,3)
+        plt.xlabel("Time (s)")
+        plt.ylabel("Cross Track Error")
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
+        plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
 
         # plt.plot(x_waypoint,y_waypoint)
         plt.show()

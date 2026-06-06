@@ -125,10 +125,9 @@ class Stanley:
         else:
             crossTrackErrorMagnitude = -abs(crossTrackErrorMagnitude)
 
-        crossTrackTerm = np.arctan2(k*crossTrackErrorMagnitude,k1 * speed)
+        crossTrackTerm = np.arctan2(k*crossTrackErrorMagnitude,k1 + speed)
 
 
-        steer = headingTerm + crossTrackTerm
         steer = headingTerm + crossTrackTerm
         steer = np.clip(steer,-1.0,1.0)
 
@@ -149,7 +148,36 @@ class Stanley:
 
         return steer
 
-    
+class PurePursuit:
+    def __init__(self):
+        self.last_index = 0
+
+    def goal(self, vehicle, path, Ld):
+        N = len(path)
+        i = self.last_index
+        physics = vehicle.get_physics_control()
+        rearX = ((physics.wheels[1].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
+        rearY = ((physics.wheels[1].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
+        
+        rearPosition = np.array([rearX, rearY])
+
+        while i < N - 1:
+            if np.linalg.norm(path[i] - rearPosition) >= Ld:
+                break
+            i += 1
+        
+        self.last_index = i 
+
+        return path[i].copy(), rearPosition
+
+    def controller(self, vehicle, xy_path, vehicleHeading, currentVelocity, L, Ld_min, Kv):
+        Ld = max(Ld_min, Kv * currentVelocity)
+        target,vehiclePosition = self.goal(vehicle, xy_path, Ld) # [x,y]
+        x = target[0] - vehiclePosition[0]
+        y = target[1] - vehiclePosition[1]
+        alpha = np.arctan2(y,x) - vehicleHeading
+        delta = np.arctan2(2*L*np.sin(alpha), Ld)
+        return delta
 
 ##################### Provided by CARLA Documenation ###########################
 def visualize_spawn_points_on_map(world, spawnPoints):
@@ -196,21 +224,36 @@ def draw_way_points(world,waypoints):
         
 ################################## Main ########################################
 
-simulationTime = 10.0
+
+######### Original Gains ##########
+# Kp = 1.2
+# Ki = 0.03
+# Kd = 0.01
+# ff = 0.0
+# k = 0.4
+# k1 = 0.02
+####################################
+
+simulationTime = 30.0
 startPoint = None
 endPoint = None
-sampleResolutoin = 2
+sampleResolutoin = 1.0 #0.08
 
 # PID paremters 
-vref= 4.0
-Kp = 1.2
-Ki = 0.03
-Kd = 0.01
+vref= 5.0
+Kp = 0.5
+Ki = 0.0
+Kd = 0.0 #0.01
 ff = 0.0
 
 # Stanely gain
-k = 0.03
-k1 = 0.8
+k = 0.9
+k1 = 0.0
+
+# Pure Pursuit 
+L =  1.55 # Approx. Wheel Base
+Ld_min = 2.0 # Look Ahead 
+Kv = 1.0 # Adjustable gain
 
 def main():
 
@@ -244,8 +287,8 @@ def main():
         if not spawn_points:
             print("Error: No spawn points found")
             return 
-        startPoint = spawn_points[50] #50
-        endPoint = spawn_points[100] # 100
+        startPoint = spawn_points[42] #50
+        endPoint = spawn_points[80] # 100
 
         # # Choosing Vehicle
         blueprint_library = world.get_blueprint_library()
@@ -284,11 +327,13 @@ def main():
         # Stanley 
         stanley = Stanley()
 
+        # Pure Pursuit
+        purePursuit = PurePursuit()
+
         # Main Loop
         initialTime = time.time()
         
         while (time.time() - initialTime) < simulationTime:
-            
             # Will be use for time-plot
             t = time.time() - initialTime
 
@@ -298,13 +343,21 @@ def main():
             vehicleControl.throttle = u
             vehicle.apply_control(vehicleControl)
 
-            # Stanely
+            # Position 
             vehicle_transform = vehicle.get_transform()
             vehicleHeading = math.radians(vehicle_transform.rotation.yaw)
             currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
+            print(f"TIME: {t}")
+
+            # Stanely
             crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)
             steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
-            vehicleControl.steer = steering
+            # vehicleControl.steer = steering
+
+            # Pure Pursuit 
+            test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
+            print(f"Test: {test}")
+            vehicleControl.steer = test
 
             # Updates camera to stay near vehicle 
             cameraPosition(world,vehicle)

@@ -85,6 +85,10 @@ class Stanley:
         v_uv = v / v_mag
 
         s = (F-wp1) @ v_uv
+
+        ######## REMOVE IF NOT NEEDED ###########
+        # s = np.clip(s, 0.0, v_mag)
+        ########################################
         
         if abs(s) >= v_mag and self.wpi < N-2:
             self.wpi += 1
@@ -234,28 +238,28 @@ def draw_way_points(world,waypoints):
 # k1 = 0.02
 ####################################
 
-simulationTime = 22.0
+simulationTime = 45.0
 startPoint = None
 endPoint = None
-sampleResolutoin = 0.08 # SEMI-STABLE FOR STanley0.5
+sampleResolutoin = 0.02 # SEMI-STABLE FOR STanley0.5
 
-controllerType = 'Stanley'
+controllerType = 'Pure Pursuit'
 
 # PID paremters 
-vref= 6.0
-Kp = 1.2
-Ki = 0.03
-Kd = 0.01 #0.01
+vref= 5.0
+Kp = 0.335 # 1.2 # LEAVE
+Ki = 0.0555 # LEAVE 
+Kd = 0.0012 # LEAVE
 ff = 0.0
 
 # Stanely gain
-k = 9.0
-k1 = 0.75
+k = 2.2 # 2.2 works 
+k1 = 0.01 # 0.75
 
 # Pure Pursuit 
 L =  1.55 # Approx. Wheel Base
-Ld_min = 1.0 # Look Ahead 
-Kv = 0.4 # Adjustable gain
+Ld_min = 1.0 # Look Ahead 1.0
+Kv = 0.8 # Adjustable gain 0.4 works
 
 def main():
 
@@ -302,6 +306,17 @@ def main():
         print(type(vehicle))
         print(f"Vehicle {chosen_vehicle_model.id} has spawn in {map.name}")
 
+        ######## TESTING (REMOVE IF IT DOES NOT WORK) #############
+        # print(f"Type: {type(startPoint)}, Start Point: {startPoint.location.x}")
+        # startPoint = carla.Location(startPoint.location.x + 100.0, startPoint.location.y, startPoint.location.z)
+        # startPoint = carla.Transform(startPoint)
+        # test_vehicle_transform = vehicle.get_transform()
+        # new_location = startPoint.location + carla.Location(x=-2.0)
+        # print(new_location)
+        # new_transform = carla.Transform(new_location, startPoint.rotation)
+        # vehicle.set_transform(new_transform)
+        ###########################################################
+
         # Setting up camera so it is behind vehicle
         intialize_specator(world,vehicle)
 
@@ -347,13 +362,44 @@ def main():
             # Position 
             vehicle_transform = vehicle.get_transform()
             vehicleHeading = math.radians(vehicle_transform.rotation.yaw)
-            currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
+
+            #------------------ Car Position (Center Of Wheel Base)---------------------------------------------------
+            # currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
+            # crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)
+            #---------------------------------------------------------------------------------------------------------
+
+            #------------------ Car Position (Using get_physics_control() For Front Axle) (TESTING) ------------------
             # physics = vehicle.get_physics_control()
-            # frontX = ((physics.wheels[0].position.x / 100.0) + (physics.wheels[2].position.x / 100.0)) / 2.0
-            # frontY = ((physics.wheels[0].position.y / 100.0) + (physics.wheels[2].position.y / 100.0)) / 2.0
+            # for i, wheels in enumerate(physics.wheels):
+            #     print(f"i:{i}, wheel: {wheels.position/100.0}")
+            # frontX = ((physics.wheels[0].position.x / 100.0) + (physics.wheels[1].position.x / 100.0)) / 2.0
+            # frontY = ((physics.wheels[0].position.y / 100.0) + (physics.wheels[1].position.y / 100.0)) / 2.0
             # frontPosition = np.array([frontX, frontY])
-            crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)
             # crossTrackError, pathHeading = stanley.closest_path_point(frontPosition, xy_waypoints)
+            #---------------------------------------------------------------------------------------------------------
+
+            #---------- Car Position (Center of Vehcile Slightly Offset Towards The Front Axle) (TESTING) ------------
+            x = vehicle_transform.location.x
+            y = vehicle_transform.location.y
+
+            print(f"Vehicle Location X: {x}")
+            print(f"Vehicle Location Y: {y}")
+
+            Lf = L / 2.0   # distance from vehicle center to front axle
+
+            frontPositionTEST = np.array([
+                x + Lf * math.cos(vehicleHeading),
+                y + Lf * math.sin(vehicleHeading)
+            ])
+
+            # print(f"Front Position Using Physics: {frontPosition}")
+            # print(f"Front Position Using World Cord: {frontPositionTEST}")
+
+            crossTrackError, pathHeading = stanley.closest_path_point(
+                frontPositionTEST,
+                xy_waypoints
+            )
+            #-----------------------------------------------------------------------------------------------------------
 
             if controllerType == 'Stanley':
                 # Stanely
@@ -389,16 +435,17 @@ def main():
         carPosition = np.array(carPosition)
 
         # Plot Settings
-        plt.subplot(2,2,1)
+        plt.figure(1)
+        plt.subplot(2,1,1)
         plt.xlabel("Time (s)")
         plt.ylabel("Vehicle Speed (m/s)")
-        plt.title("PID Controller Results")
+        plt.title(f"PID Controller Results [Vref: {vref} Kp:{Kp}, Ki:{Ki}, Kd:{Kd}]")
         plt.axhline(y=vref,color='gray',linestyle='-')
         plt.minorticks_on()
         plt.grid(True, which="both", linewidth = 0.2)
         plt.plot(timeAxis, velocityAxis, linewidth="2")
-        
-        plt.subplot(2,2,2)
+
+        plt.subplot(2,1,2)
         plt.xlabel("Time (s)")
         plt.ylabel("Error")
         plt.title("PID Error")
@@ -406,20 +453,30 @@ def main():
         plt.grid(True, which="both", linewidth = 0.2)
         plt.plot(timeAxis,errorAxis, linewidth="2")
 
-        plt.subplot(2,2,3)
-        plt.xlabel("Time (s)")
-        plt.ylabel("Cross Track Error")
-        plt.title(f"{controllerType}: Cross Track Error")
-        plt.minorticks_on()
-        plt.grid(True, which="both", linewidth = 0.2)
-        plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
+        # plt.subplot(2,2,3)
+        # plt.xlabel("Time (s)")
+        # plt.ylabel("Cross Track Error")
+        # plt.title(f"{controllerType}: Cross Track Error")
+        # plt.minorticks_on()
+        # plt.grid(True, which="both", linewidth = 0.2)
+        # plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
        
-        plt.subplot(2,2,4)
-        plt.plot(xy_waypoints[:,0],xy_waypoints[:,1], linewidth="2")
-        plt.plot(carPosition[:,0], carPosition[:,1], linewidth = "2")
-        plt.title("Planned Trajectory")
+        plt.figure(4)
+        plt.subplot(1,1,1)
+        plt.scatter(xy_waypoints[0,0], xy_waypoints[0,1], label="Starting Node",color="green",s=70)
+        plt.plot(xy_waypoints[:,0],xy_waypoints[:,1], linewidth="2", label="Planned Trajectory")
+        plt.plot(carPosition[:,0], carPosition[:,1], linewidth = "2", label="Actual Vehicle Trajectory")
+
+        if controllerType == "Pure Pursuit":
+            plt.title(f"Planned Trajectory For {controllerType} | Kv:{Kv}")
+        else:
+            plt.title(f"Planned Trajectory For {controllerType} | K:{k}")
+
+        plt.xlabel("X-Axis")
+        plt.ylabel("Y-Axis")
         plt.minorticks_on()
         plt.grid(True, which="both", linewidth = 0.2)
+        plt.legend()
         plt.show()
     except:
         print("Did not connect to Carla server")

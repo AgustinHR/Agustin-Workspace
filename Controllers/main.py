@@ -221,7 +221,7 @@ def draw_way_points(world,waypoints):
                                 color = carla.Color(r=0, g=0, b=255), 
                                 life_time=1000.0,
                                 persistent_lines=True)
-        
+
 ################################## Main ########################################
 
 
@@ -234,26 +234,28 @@ def draw_way_points(world,waypoints):
 # k1 = 0.02
 ####################################
 
-simulationTime = 30.0
+simulationTime = 22.0
 startPoint = None
 endPoint = None
-sampleResolutoin = 1.0 #0.08
+sampleResolutoin = 0.08 # SEMI-STABLE FOR STanley0.5
+
+controllerType = 'Stanley'
 
 # PID paremters 
-vref= 5.0
-Kp = 0.5
-Ki = 0.0
-Kd = 0.0 #0.01
+vref= 6.0
+Kp = 1.2
+Ki = 0.03
+Kd = 0.01 #0.01
 ff = 0.0
 
 # Stanely gain
-k = 0.9
-k1 = 0.0
+k = 9.0
+k1 = 0.75
 
 # Pure Pursuit 
 L =  1.55 # Approx. Wheel Base
-Ld_min = 2.0 # Look Ahead 
-Kv = 1.0 # Adjustable gain
+Ld_min = 1.0 # Look Ahead 
+Kv = 0.4 # Adjustable gain
 
 def main():
 
@@ -265,10 +267,9 @@ def main():
     xy_waypoints = []
     velocityAxis = []
     errorAxis = []
-
     crossTrackErrorData = []
-
     timeAxis = []
+    carPosition = []
 
     try:
         # Lets connect to the Carla server
@@ -278,7 +279,7 @@ def main():
 
         # Create world 
         world = client.get_world()
-        client.load_world('Town04')
+        client.load_world('Town02')
         map = world.get_map()
         print(f"Connecting to world {map.name}")
 
@@ -347,26 +348,34 @@ def main():
             vehicle_transform = vehicle.get_transform()
             vehicleHeading = math.radians(vehicle_transform.rotation.yaw)
             currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
-            print(f"TIME: {t}")
-
-            # Stanely
+            # physics = vehicle.get_physics_control()
+            # frontX = ((physics.wheels[0].position.x / 100.0) + (physics.wheels[2].position.x / 100.0)) / 2.0
+            # frontY = ((physics.wheels[0].position.y / 100.0) + (physics.wheels[2].position.y / 100.0)) / 2.0
+            # frontPosition = np.array([frontX, frontY])
             crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)
-            steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
-            # vehicleControl.steer = steering
+            # crossTrackError, pathHeading = stanley.closest_path_point(frontPosition, xy_waypoints)
 
-            # Pure Pursuit 
-            test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
-            print(f"Test: {test}")
-            vehicleControl.steer = test
+            if controllerType == 'Stanley':
+                # Stanely
+                print('CONTROL TYPE: Stanley')
+                steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
+                vehicleControl.steer = steering
+
+            if controllerType == 'Pure Pursuit':
+                # Pure Pursuit 
+                print('CONTROL TYPE: Pure Pursuit')
+                test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
+                vehicleControl.steer = test
 
             # Updates camera to stay near vehicle 
-            cameraPosition(world,vehicle)
+            # cameraPosition(world,vehicle)
 
             # Update time-plot
             velocityAxis.append(currentVelocity)
             errorAxis.append(pid.previousError)
             crossTrackErrorData.append(np.linalg.norm(crossTrackError))
             timeAxis.append(t)
+            carPosition.append([vehicle.get_location().x, vehicle.get_location().y])
 
         # Stop vehicle 
         vehicleControl = carla.VehicleControl(throttle=0.0, steer=0.0, brake=0.0) 
@@ -377,6 +386,7 @@ def main():
         errorAxis = np.array(errorAxis)
         crossTrackErrorData = np.array(crossTrackErrorData)
         timeAxis = np.array(timeAxis)
+        carPosition = np.array(carPosition)
 
         # Plot Settings
         plt.subplot(2,2,1)
@@ -391,6 +401,7 @@ def main():
         plt.subplot(2,2,2)
         plt.xlabel("Time (s)")
         plt.ylabel("Error")
+        plt.title("PID Error")
         plt.minorticks_on()
         plt.grid(True, which="both", linewidth = 0.2)
         plt.plot(timeAxis,errorAxis, linewidth="2")
@@ -398,11 +409,17 @@ def main():
         plt.subplot(2,2,3)
         plt.xlabel("Time (s)")
         plt.ylabel("Cross Track Error")
+        plt.title(f"{controllerType}: Cross Track Error")
         plt.minorticks_on()
         plt.grid(True, which="both", linewidth = 0.2)
         plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
-
-        # plt.plot(x_waypoint,y_waypoint)
+       
+        plt.subplot(2,2,4)
+        plt.plot(xy_waypoints[:,0],xy_waypoints[:,1], linewidth="2")
+        plt.plot(carPosition[:,0], carPosition[:,1], linewidth = "2")
+        plt.title("Planned Trajectory")
+        plt.minorticks_on()
+        plt.grid(True, which="both", linewidth = 0.2)
         plt.show()
     except:
         print("Did not connect to Carla server")

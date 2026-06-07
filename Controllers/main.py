@@ -156,12 +156,52 @@ class PurePursuit:
     def __init__(self):
         self.last_index = 0
 
+
+    def closest_path_point(self, F, xy_path):
+        N = len(xy_path)
+        idx = min(self.wpi, N - 2)
+        wp1 = xy_path[idx]
+        wp2 = xy_path[idx + 1]
+        v = wp2 - wp1
+        v_mag = np.linalg.norm(v)
+        v_uv = v / v_mag
+
+        s = (F-wp1) @ v_uv
+
+        ######## REMOVE IF NOT NEEDED ###########
+        # s = np.clip(s, 0.0, v_mag)
+        ########################################
+        
+        if abs(s) >= v_mag and self.wpi < N-2:
+            self.wpi += 1
+                
+        closestPoint = wp1  + v_uv * s
+        crossTrackError = F - closestPoint
+
+        ############ REMOVE AFTER ##################
+        print(" ")
+        print("*********************************************************************************")
+        print("-------------------------------------------")
+        print("Closest Path Point Status")
+        print("-------------------------------------------")
+        print(f"Current Location: {F}")
+        print(f"WP1[{idx}]: {wp1} WP2[{idx+1}]: {wp2}")
+        print(f"WP2-WP1: {v}")
+        print(f"WP2-WP1 Magnitude: {v_mag}")
+        print(f"Unit Vector of WP2-WP1: {v_uv}")
+        print(f"Path Heading: { np.arctan2(v_uv[1], v_uv[0])}")
+        print(f"Closest Point: {closestPoint}")
+        print("-------------------------------------------")
+        #############################################
+
+        return crossTrackError, np.arctan2(v_uv[1], v_uv[0])
+
     def goal(self, vehicle, path, Ld):
         N = len(path)
         i = self.last_index
         physics = vehicle.get_physics_control()
-        rearX = ((physics.wheels[1].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
-        rearY = ((physics.wheels[1].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
+        rearX = ((physics.wheels[2].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
+        rearY = ((physics.wheels[2].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
         
         rearPosition = np.array([rearX, rearY])
 
@@ -238,7 +278,7 @@ def draw_way_points(world,waypoints):
 # k1 = 0.02
 ####################################
 
-simulationTime = 45.0
+simulationTime = 25.0
 startPoint = None
 endPoint = None
 sampleResolutoin = 0.02 # SEMI-STABLE FOR STanley0.5
@@ -246,7 +286,7 @@ sampleResolutoin = 0.02 # SEMI-STABLE FOR STanley0.5
 controllerType = 'Pure Pursuit'
 
 # PID paremters 
-vref= 5.0
+vref= 10.0
 Kp = 0.335 # 1.2 # LEAVE
 Ki = 0.0555 # LEAVE 
 Kd = 0.0012 # LEAVE
@@ -257,7 +297,7 @@ k = 2.2 # 2.2 works
 k1 = 0.01 # 0.75
 
 # Pure Pursuit 
-L =  1.55 # Approx. Wheel Base
+L =  3.00464 # Approx. Wheel Base, BEFORE 1.55
 Ld_min = 1.0 # Look Ahead 1.0
 Kv = 0.8 # Adjustable gain 0.4 works
 

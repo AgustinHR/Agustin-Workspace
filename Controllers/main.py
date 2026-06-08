@@ -154,29 +154,6 @@ class PurePursuit:
         self.wpi = 0
 
     def closest_path_point(self, F, xy_path):
-    #     N = len(xy_path)
-    #     idx = min(self.wpi, N - 2)
-    #     wp1 = xy_path[idx]
-    #     wp2 = xy_path[idx + 1]
-
-    #     v = wp2 - wp1
-    #     v_mag = np.linalg.norm(v)
-    #     v_uv = v / v_mag
-
-    #     s = (F-wp1) @ v_uv
-    #     if s >= v_mag and self.wpi < N - 2:
-    #         self.wpi += 1
-
-    #     # if abs(s) >= v_mag and self.wpi < N-2:
-    #     #     self.wpi += 1
-
-    #     s_clamped = np.clip(s, 0, v_mag)
-    #     closestPoint = wp1 + v_uv * s_clamped
-    #     # closestPoint = wp1  + v_uv * s
-    #     crossTrackError = F - closestPoint
-
-    #     return crossTrackError
-
         N = len(xy_path)
 
         while self.wpi < N - 2:

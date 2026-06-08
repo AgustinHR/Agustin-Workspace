@@ -154,37 +154,62 @@ class PurePursuit:
         self.wpi = 0
 
     def closest_path_point(self, F, xy_path):
+    #     N = len(xy_path)
+    #     idx = min(self.wpi, N - 2)
+    #     wp1 = xy_path[idx]
+    #     wp2 = xy_path[idx + 1]
+
+    #     v = wp2 - wp1
+    #     v_mag = np.linalg.norm(v)
+    #     v_uv = v / v_mag
+
+    #     s = (F-wp1) @ v_uv
+    #     if s >= v_mag and self.wpi < N - 2:
+    #         self.wpi += 1
+
+    #     # if abs(s) >= v_mag and self.wpi < N-2:
+    #     #     self.wpi += 1
+
+    #     s_clamped = np.clip(s, 0, v_mag)
+    #     closestPoint = wp1 + v_uv * s_clamped
+    #     # closestPoint = wp1  + v_uv * s
+    #     crossTrackError = F - closestPoint
+
+    #     return crossTrackError
+
         N = len(xy_path)
-        idx = min(self.wpi, N - 2)
-        wp1 = xy_path[idx]
-        wp2 = xy_path[idx + 1]
+
+        while self.wpi < N - 2:
+            wp1 = xy_path[self.wpi]
+            wp2 = xy_path[self.wpi + 1]
+
+            v = wp2 - wp1
+            v_mag = np.linalg.norm(v)
+
+            if v_mag < 1e-6:
+                self.wpi += 1
+                continue
+
+            v_uv = v / v_mag
+            s = (F - wp1) @ v_uv
+
+            if s >= v_mag:
+                self.wpi += 1
+            else:
+                break
+
+        wp1 = xy_path[self.wpi]
+        wp2 = xy_path[self.wpi + 1]
 
         v = wp2 - wp1
         v_mag = np.linalg.norm(v)
         v_uv = v / v_mag
 
-        s = (F-wp1) @ v_uv
-        if abs(s) >= v_mag and self.wpi < N-2:
-            self.wpi += 1
-                
-        closestPoint = wp1  + v_uv * s
-        crossTrackError = F - closestPoint
+        s = (F - wp1) @ v_uv
+        s_clamped = np.clip(s, 0, v_mag)
 
-        ############ REMOVE AFTER ##################
-        # print(" ")
-        # print("*********************************************************************************")
-        # print("-------------------------------------------")
-        # print("Closest Path Point Status")
-        # print("-------------------------------------------")
-        # print(f"Current Location: {F}")
-        # print(f"WP1[{idx}]: {wp1} WP2[{idx+1}]: {wp2}")
-        # print(f"WP2-WP1: {v}")
-        # print(f"WP2-WP1 Magnitude: {v_mag}")
-        # print(f"Unit Vector of WP2-WP1: {v_uv}")
-        # print(f"Path Heading: { np.arctan2(v_uv[1], v_uv[0])}")
-        # print(f"Closest Point: {closestPoint}")
-        # print("-------------------------------------------")
-        #############################################
+        closestPoint = wp1 + v_uv * s_clamped
+        crossTrackError = F - closestPoint
 
         return crossTrackError
 
@@ -270,28 +295,28 @@ def draw_way_points(world,waypoints):
 # k1 = 0.02
 ####################################
 
-simulationTime = 43.5
+simulationTime = 28.0
 startPoint = None
 endPoint = None
-sampleResolutoin = 0.02 # SEMI-STABLE FOR STanley0.5
+sampleResolutoin = 0.1 # SEMI-STABLE FOR STanley0.5
 
 controllerType = 'Pure Pursuit'
 
 # PID paremters 
-vref= 11.0
+vref= 7.0
 Kp = 0.335 # 1.2 # LEAVE
 Ki = 0.0555 # LEAVE 
 Kd = 0.0012 # LEAVE
 ff = 0.0
 
 # Stanely gain
-k = 1.0 # 2.2 works 
+k = 7.5 # 2.2 works 
 k1 = 0.2 # 0.01
 
 # Pure Pursuit 
 L =  3.00464 # Approx. Wheel Base, BEFORE 1.55, 3.00464
 Ld_min = 1.0 # Look Ahead 1.0
-Kv = 2.8
+Kv = 1.2
 
 def main():
 
@@ -327,6 +352,7 @@ def main():
             return 
         startPoint = spawn_points[42] #50
         endPoint = spawn_points[80] # 100
+        # visualize_spawn_points_on_map(world,spawn_points)
 
         # # Choosing Vehicle
         blueprint_library = world.get_blueprint_library()
@@ -374,7 +400,7 @@ def main():
         while (time.time() - initialTime) < simulationTime:
             # Will be use for time-plot
             t = time.time() - initialTime
-
+            print(f"TIME{t}")
             # Current velocity 
             currentVelocity = vehicle.get_velocity().length()
             u = pid.controller(vref,currentVelocity)
@@ -385,79 +411,35 @@ def main():
             vehicle_transform = vehicle.get_transform()
             vehicleHeading = math.radians(vehicle_transform.rotation.yaw)
 
-            # Pure Pursuit 
-            print('CONTROL TYPE: Pure Pursuit')
-            physics = vehicle.get_physics_control()
-            rX = ((physics.wheels[2].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
-            rY = ((physics.wheels[2].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
-            rPosition = np.array([rX, rY])
-            purePursuitCrossTrackError = purePursuit.closest_path_point(rPosition,xy_waypoints)
-            test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
-            vehicleControl.steer = test
-            print(test)
-            print(f"Rear Center Position: {rPosition}")
-            print(f"PP CTE: {purePursuitCrossTrackError}")
-            print(f"Time: {t}")
-
-            #------------------ Car Position (Using get_physics_control() For Front Axle) (TESTING) ------------------
+            # # Pure Pursuit 
+            # print('CONTROL TYPE: Pure Pursuit')
             # physics = vehicle.get_physics_control()
-            # for i, wheels in enumerate(physics.wheels):
-            #     print(f"i:{i}, wheel: {wheels.position/100.0}")
-            # frontX = ((physics.wheels[0].position.x / 100.0) + (physics.wheels[1].position.x / 100.0)) / 2.0
-            # frontY = ((physics.wheels[0].position.y / 100.0) + (physics.wheels[1].position.y / 100.0)) / 2.0
-            # frontPosition = np.array([frontX, frontY])
-            # crossTrackError, pathHeading = stanley.closest_path_point(frontPosition, xy_waypoints)
-            #---------------------------------------------------------------------------------------------------------
+            # rX = ((physics.wheels[2].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
+            # rY = ((physics.wheels[2].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
+            # rPosition = np.array([rX, rY])
+            # purePursuitCrossTrackError = purePursuit.closest_path_point(rPosition,xy_waypoints)
+            # test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
+            # vehicleControl.steer = test
 
-            #---------- Car Position (Center of Vehcile Slightly Offset Towards The Front Axle) (TESTING) ------------
-            # x = vehicle_transform.location.x
-            # y = vehicle_transform.location.y
-
-            # print(f"Vehicle Location X: {x}")
-            # print(f"Vehicle Location Y: {y}")
-
-            # Lf = L / 2.0   # distance from vehicle center to front axle
-
-            # frontPositionTEST = np.array([
-            #     x + Lf * math.cos(vehicleHeading),
-            #     y + Lf * math.sin(vehicleHeading)
-            # ])
-
-            # # print(f"Front Position Using Physics: {frontPosition}")
-            # print(f"Front Position Using World Cord: {frontPositionTEST}")
-
-            # crossTrackError, pathHeading = stanley.closest_path_point(
-            #     frontPositionTEST,
-            #     xy_waypoints
-            # )
-            #-----------------------------------------------------------------------------------------------------------
-
-            # if controllerType == 'Stanley':
+            if controllerType == 'Stanley':
             #     # Stanely
             #     print('CONTROL TYPE: Stanley')
-            #     #------------------ Car Position (Center Of Wheel Base)---------------------------------------------------
-            #     currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
-            #     crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)   
+            #     # #------------------ Car Position (Center Of Wheel Base)---------------------------------------------------
+                currentLocation = np.array([vehicle.get_location().x, vehicle.get_location().y])
+                crossTrackError, pathHeading = stanley.closest_path_point(currentLocation, xy_waypoints)   
             #     #---------------------------------------------------------------------------------------------------------
-            #     steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
-            #     vehicleControl.steer = steering
-            # else:
-            #     # Pure Pursuit 
-            #     print('CONTROL TYPE: Pure Pursuit')
-            #     physics = vehicle.get_physics_control()
-            #     rX = ((physics.wheels[2].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
-            #     rY = ((physics.wheels[2].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
-            #     rPosition = np.array([rX, rY])
-            #     print("HIIIIII")
-            #     purePursuitCrossTrackError = purePursuit.closest_path_point(rPosition,xy_waypoints)
-            #     test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
-            #     print("I am tired")
-            #     vehicleControl.steer = test
-            #     print("DISNEY")
-            #     print(test)
-            #     print(f"Rear Center Position: {rPosition}")
-            #     print(f"PP CTE: {purePursuitCrossTrackError}")
-            #     print(f"Time: {t}")
+                steering = stanley.controller(crossTrackError,pathHeading,vehicleHeading,currentVelocity,k,k1)
+                vehicleControl.steer = steering
+            else:
+                # Pure Pursuit 
+                print('CONTROL TYPE: Pure Pursuit')
+                physics = vehicle.get_physics_control()
+                rX = ((physics.wheels[2].position.x / 100.0) + (physics.wheels[3].position.x / 100.0)) / 2.0
+                rY = ((physics.wheels[2].position.y / 100.0) + (physics.wheels[3].position.y / 100.0)) / 2.0
+                rPosition = np.array([rX, rY])
+                purePursuitCrossTrackError = purePursuit.closest_path_point(rPosition,xy_waypoints)
+                test = purePursuit.controller(vehicle,xy_waypoints,vehicleHeading,currentVelocity,L,Ld_min,Kv)
+                vehicleControl.steer = test
 
             # Updates camera to stay near vehicle 
             # cameraPosition(world,vehicle)
@@ -477,7 +459,7 @@ def main():
         # Appending to plot 
         velocityAxis = np.array(velocityAxis)
         errorAxis = np.array(errorAxis)
-        crossTrackErrorData = np.array(crossTrackErrorData)
+        # crossTrackErrorData = np.array(crossTrackErrorData)
         timeAxis = np.array(timeAxis)
         carPosition = np.array(carPosition)
         purePursuitCTEData = np.array(purePursuitCTEData)
@@ -513,7 +495,7 @@ def main():
             plt.plot(timeAxis,purePursuitCTEData,linewidth="2")
         else:
             plt.title(f"{controllerType}: Cross Track Error Magnitude | K: {k} Vref: {vref} m/s")
-            plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
+            # plt.plot(timeAxis,crossTrackErrorData, linewidth="2")
        
         plt.figure(3)
         plt.subplot(1,1,1)
